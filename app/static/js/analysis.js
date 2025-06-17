@@ -6,6 +6,15 @@ let originalChartsData = {};
 let totalPoints = 0;
 let currentTimeRange = [0, -1];
 
+// Simple but effective grid for large, aligned charts
+const ALIGNED_GRID = {
+    left: 120,      // Fixed left margin for Y-axis labels
+    right: 50,      // Fixed right margin
+    top: 80,        // Fixed top margin for title/legend
+    bottom: 80,     // Fixed bottom margin for X-axis/controls
+    containLabel: false
+};
+
 // Debug function
 function debugLog(message) {
     console.log('[Analysis Debug]:', message);
@@ -18,17 +27,39 @@ function debugLog(message) {
 document.addEventListener('DOMContentLoaded', function() {
     debugLog('Starting initialization...');
     
+    // Initialize filename animation
+    initializeFilenameAnimation();
+    
     // Wait a bit for everything to load
     setTimeout(function() {
         initializeAnalysisPage();
     }, 100);
 });
 
+function initializeFilenameAnimation() {
+    const filenameElement = document.getElementById('filename-display');
+    if (filenameElement) {
+        const textWidth = filenameElement.scrollWidth;
+        const containerWidth = filenameElement.parentElement.offsetWidth;
+        
+        if (textWidth > containerWidth) {
+            filenameElement.classList.add('animate');
+            
+            filenameElement.addEventListener('mouseenter', function() {
+                this.classList.add('paused');
+            });
+            
+            filenameElement.addEventListener('mouseleave', function() {
+                this.classList.remove('paused');
+            });
+        }
+    }
+}
+
 function initializeAnalysisPage() {
     try {
         debugLog('Loading data...');
         
-        // Load data from page
         const chartDataElement = document.getElementById('chart-data');
         const timeLabelsElement = document.getElementById('time-labels');
         
@@ -37,22 +68,21 @@ function initializeAnalysisPage() {
         }
         
         chartsData = JSON.parse(chartDataElement.textContent);
-        originalChartsData = JSON.parse(JSON.stringify(chartsData)); // Deep copy
+        originalChartsData = JSON.parse(JSON.stringify(chartsData));
         timeLabels = JSON.parse(timeLabelsElement.textContent);
         totalPoints = timeLabels.length;
         currentTimeRange = [0, totalPoints - 1];
         
         debugLog(`Loaded ${Object.keys(chartsData).length} charts, ${totalPoints} time points`);
         
-        // Check if ECharts is loaded
         if (typeof echarts === 'undefined') {
             throw new Error('ECharts library not loaded');
         }
         
-        // Initialize components
         initializeCharts();
         initializeSlider();
         setupButtons();
+        setupGlobalResize(); // Add global resize handler
         
         debugLog('Initialization complete!');
         
@@ -80,9 +110,16 @@ function initializeCharts() {
             // Clear loading content
             element.innerHTML = '';
             
+            // Ensure element has proper dimensions
+            element.style.width = '100%';
+            element.style.height = '500px';
+            element.style.minHeight = '500px';
+            element.style.display = 'block';
+            
             const chart = echarts.init(element, null, {
                 renderer: 'canvas',
-                useDirtyRect: false
+                width: element.offsetWidth,
+                height: 500
             });
             
             charts[chartId] = chart;
@@ -92,12 +129,6 @@ function initializeCharts() {
             } else if (chartInfo.config.type === 'line') {
                 createLineChart(chart, chartId, chartInfo);
             }
-            
-            // Auto-resize on window resize
-            const resizeHandler = () => {
-                setTimeout(() => chart.resize(), 100);
-            };
-            window.addEventListener('resize', resizeHandler);
             
             chartsInitialized++;
             
@@ -109,15 +140,73 @@ function initializeCharts() {
     debugLog(`Initialized ${chartsInitialized} charts`);
 }
 
+// Global resize handler for all charts
+function setupGlobalResize() {
+    const resizeHandler = debounce(() => {
+        debugLog('Handling window resize...');
+        
+        // Force redraw all charts with new dimensions
+        for (const [chartId, chartInfo] of Object.entries(chartsData)) {
+            const chart = charts[chartId];
+            const element = document.getElementById(chartId);
+            
+            if (chart && element && chartInfo) {
+                try {
+                    // Ensure container maintains proper dimensions
+                    element.style.width = '100%';
+                    element.style.height = '500px';
+                    element.style.minHeight = '500px';
+                    element.style.display = 'block';
+                    
+                    // Force chart to recognize new container size
+                    chart.resize({
+                        width: element.offsetWidth,
+                        height: 500
+                    });
+                    
+                    // Recreate chart with new dimensions
+                    if (chartInfo.config.type === 'heatmap') {
+                        createHeatmapChart(chart, chartId, chartInfo);
+                    } else if (chartInfo.config.type === 'line') {
+                        createLineChart(chart, chartId, chartInfo);
+                    }
+                    
+                } catch (error) {
+                    console.error(`Error resizing chart ${chartId}:`, error);
+                }
+            }
+        }
+        
+        debugLog('Resize complete');
+    }, 200);
+    
+    window.addEventListener('resize', resizeHandler);
+    
+    // Also handle orientation change on mobile devices
+    window.addEventListener('orientationchange', () => {
+        setTimeout(resizeHandler, 500);
+    });
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
 function filterDataByTimeRange(data, startIdx, endIdx, chartType) {
     if (chartType === 'heatmap') {
-        // Filter heatmap data by time index (first dimension)
         return data.filter(point => {
             const timeIndex = point[0];
             return timeIndex >= startIdx && timeIndex <= endIdx;
-        }).map(point => [point[0] - startIdx, point[1], point[2]]); // Adjust time index
+        }).map(point => [point[0] - startIdx, point[1], point[2]]);
     } else if (chartType === 'line') {
-        // Filter line chart data
         const filteredData = {
             x_data: data.x_data.slice(startIdx, endIdx + 1),
             y_data: {}
@@ -141,26 +230,22 @@ function createHeatmapChart(chart, chartId, chartInfo) {
     const vmin = config.default_min !== undefined ? config.default_min : chartInfo.stats.min;
     const vmax = config.default_max !== undefined ? config.default_max : chartInfo.stats.max;
     
-    // Filter data based on current time range
     const filteredData = filterDataByTimeRange(data, currentTimeRange[0], currentTimeRange[1], 'heatmap');
     const timeRangeSize = currentTimeRange[1] - currentTimeRange[0] + 1;
     
     const option = {
         title: {
             text: config.title,
-            subtext: `${config.description} (${columns.length} columns, showing ${timeRangeSize} time points)`,
+            subtext: `${config.description} (${columns.length} columns, ${timeRangeSize} time points)`,
             left: 'center',
-            textStyle: {
-                fontSize: 16
-            },
-            subtextStyle: {
-                fontSize: 12
-            }
+            top: 15,
+            textStyle: { fontSize: 16 },
+            subtextStyle: { fontSize: 12 }
         },
         tooltip: {
             position: 'top',
             formatter: function(params) {
-                const timeIdx = params.data[0] + currentTimeRange[0]; // Adjust for filtered range
+                const timeIdx = params.data[0] + currentTimeRange[0];
                 const colIdx = params.data[1];
                 const value = params.data[2];
                 const timeLabel = timeIdx < timeLabels.length ? timeLabels[timeIdx] : `Time ${timeIdx}`;
@@ -168,31 +253,28 @@ function createHeatmapChart(chart, chartId, chartInfo) {
                 return `Time: ${timeLabel}<br/>Variable: ${colName}<br/>Value: ${value.toFixed(3)}`;
             }
         },
-        grid: {
-            height: '60%',
-            top: '15%',
-            left: '10%',
-            right: '10%'
-        },
+        grid: ALIGNED_GRID,
         xAxis: {
             type: 'category',
             data: Array.from({length: timeRangeSize}, (_, i) => currentTimeRange[0] + i),
-            splitArea: {
-                show: true
-            },
+            splitArea: { show: true },
             name: 'Time Index',
             nameLocation: 'middle',
-            nameGap: 30
+            nameGap: 30,
+            axisLabel: { fontSize: 11 }
         },
         yAxis: {
             type: 'category',
             data: columns,
-            splitArea: {
-                show: true
-            },
+            splitArea: { show: true },
             name: `Variables (${config.units})`,
             nameLocation: 'middle',
-            nameGap: 80
+            nameGap: 80,
+            axisLabel: {
+                fontSize: 10,
+                width: 100,
+                overflow: 'truncate'
+            }
         },
         visualMap: {
             min: vmin,
@@ -200,7 +282,7 @@ function createHeatmapChart(chart, chartId, chartInfo) {
             calculable: true,
             orient: 'horizontal',
             left: 'center',
-            bottom: '2%',
+            bottom: 15,
             inRange: {
                 color: config.colour_scale === 'grafana_style' ? [
                     '#0d0887', '#2d1e8f', '#4a0da6', '#6a00a8', '#8b0aa5',
@@ -214,9 +296,7 @@ function createHeatmapChart(chart, chartId, chartInfo) {
             name: config.title,
             type: 'heatmap',
             data: filteredData || [],
-            label: {
-                show: false
-            },
+            label: { show: false },
             emphasis: {
                 itemStyle: {
                     shadowBlur: 10,
@@ -226,6 +306,8 @@ function createHeatmapChart(chart, chartId, chartInfo) {
         }],
         toolbox: {
             show: true,
+            right: 20,
+            top: 15,
             feature: {
                 saveAsImage: { 
                     title: 'Save as Image',
@@ -235,7 +317,7 @@ function createHeatmapChart(chart, chartId, chartInfo) {
         }
     };
     
-    chart.setOption(option);
+    chart.setOption(option, true);
 }
 
 function createLineChart(chart, chartId, chartInfo) {
@@ -247,7 +329,6 @@ function createLineChart(chart, chartId, chartInfo) {
         return;
     }
     
-    // Filter data based on current time range
     const filteredData = filterDataByTimeRange(data, currentTimeRange[0], currentTimeRange[1], 'line');
     
     const series = [];
@@ -261,9 +342,7 @@ function createLineChart(chart, chartId, chartInfo) {
             data: values || [],
             smooth: true,
             symbol: 'none',
-            lineStyle: {
-                width: 2
-            },
+            lineStyle: { width: 2 },
             color: colors[colorIndex % colors.length]
         });
         colorIndex++;
@@ -274,80 +353,66 @@ function createLineChart(chart, chartId, chartInfo) {
             text: config.title,
             subtext: `${config.description} (${Object.keys(filteredData.y_data).length} series, ${filteredData.x_data.length} points)`,
             left: 'center',
-            textStyle: {
-                fontSize: 16
-            },
-            subtextStyle: {
-                fontSize: 12
-            }
+            top: 15,
+            textStyle: { fontSize: 16 },
+            subtextStyle: { fontSize: 12 }
         },
         tooltip: {
             trigger: 'axis',
-            axisPointer: {
-                type: 'cross'
-            }
+            axisPointer: { type: 'cross' }
         },
         legend: {
-            top: '12%',
+            top: 55,
             type: 'scroll',
             pageButtonItemGap: 5,
             pageButtonGap: 10,
             pageIconSize: 12
         },
-        grid: {
-            left: '8%',
-            right: '8%',
-            bottom: '15%',
-            top: '25%',
-            containLabel: true
-        },
+        grid: ALIGNED_GRID,
         xAxis: {
             type: 'category',
             boundaryGap: false,
             data: filteredData.x_data || [],
             name: 'Time Index',
             nameLocation: 'middle',
-            nameGap: 30
+            nameGap: 30,
+            axisLabel: { fontSize: 11 }
         },
         yAxis: {
             type: 'value',
             name: `Value (${config.units})`,
             nameLocation: 'middle',
-            nameGap: 50,
+            nameGap: 60,
             min: config.default_min,
-            max: config.default_max
+            max: config.default_max,
+            axisLabel: {
+                fontSize: 11,
+                width: 100,
+                overflow: 'truncate'
+            }
         },
         series: series,
         toolbox: {
             show: true,
+            right: 20,
+            top: 15,
             feature: {
                 saveAsImage: { 
                     title: 'Save as Image',
                     name: `${config.title}_line`
                 },
                 dataZoom: { 
-                    title: { 
-                        zoom: 'Zoom', 
-                        back: 'Reset Zoom' 
-                    } 
+                    title: { zoom: 'Zoom', back: 'Reset Zoom' }
                 }
             }
         },
         dataZoom: [
-            {
-                type: 'inside',
-                start: 0,
-                end: 100
-            },
-            {
-                start: 0,
-                end: 100,
-                height: 30
-            }
+            { type: 'inside', start: 0, end: 100 },
+            { start: 0, end: 100, height: 25, bottom: 40 }
         ]
     };
     
-    chart.setOption(option);
+    chart.setOption(option, true);
 }
 
 function updateAllChartsWithTimeRange(startIdx, endIdx) {
@@ -375,7 +440,6 @@ function initializeSlider() {
     }
     
     try {
-        // Destroy existing slider if it exists
         if (slider.noUiSlider) {
             slider.noUiSlider.destroy();
         }
@@ -383,12 +447,9 @@ function initializeSlider() {
         debugLog(`Creating slider for ${totalPoints} points`);
         
         noUiSlider.create(slider, {
-            start: [0, Math.min(totalPoints - 1, 99)], // Limit initial range for performance
+            start: [0, Math.min(totalPoints - 1, 99)],
             connect: true,
-            range: {
-                'min': 0,
-                'max': totalPoints - 1
-            },
+            range: { 'min': 0, 'max': totalPoints - 1 },
             step: 1,
             tooltips: [
                 {
@@ -413,7 +474,6 @@ function initializeSlider() {
             updateAllChartsWithTimeRange(startIdx, endIdx);
         });
         
-        // Initialize with default range
         updateAllChartsWithTimeRange(0, Math.min(totalPoints - 1, 99));
         
         debugLog('Slider initialized successfully');
@@ -469,17 +529,11 @@ function updateChartRange(chartId) {
     try {
         if (chartInfo.config.type === 'heatmap') {
             chart.setOption({
-                visualMap: {
-                    min: minValue,
-                    max: maxValue
-                }
+                visualMap: { min: minValue, max: maxValue }
             });
         } else {
             chart.setOption({
-                yAxis: {
-                    min: minValue,
-                    max: maxValue
-                }
+                yAxis: { min: minValue, max: maxValue }
             });
         }
         debugLog(`Updated range for ${chartId}: ${minValue} to ${maxValue}`);
@@ -496,6 +550,15 @@ function resetChartRange(chartId, dataMin, dataMax) {
     if (maxInput) maxInput.value = dataMax.toFixed(2);
     
     updateChartRange(chartId);
+}
+
+// Global filename animation functions
+function pauseAnimation(element) {
+    element.classList.add('paused');
+}
+
+function resumeAnimation(element) {
+    element.classList.remove('paused');
 }
 
 // Global error handler
