@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis Results - {{ metadata.original_filename }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.css">
+<style>
+    .analysis-layout {
+        height: calc(100vh - 56px); /* Account for fixed navbar */
+        overflow: hidden;
+    }
+    
+    .time-control-bar {
+        position: sticky;
+        top: 0;
+        background: #fff;
+        border-bottom: 1px solid #dee2e6;
+        z-index: 100;
+        padding: 15px;
+    }
+    
+    .analysis-content {
+        height: calc(100vh - 156px); /* Account for navbar + time control */
+        overflow: hidden;
+    }
+    
+    .left-sidebar {
+        height: 100%;
+        overflow: visible; /* Remove general overflow */
+        border-right: 1px solid #dee2e6;
+        background: #f8f9fa;
+        padding: 15px;
+    }
+    
+    .chart-controls-card {
+        max-height: calc(100vh - 300px); /* Leave space for analysis info */
+    }
+    
+    .chart-controls-body {
+        max-height: calc(100vh - 350px);
+        overflow-y: auto; /* Only this section scrolls */
+        overflow-x: hidden;
+    }
+    
+    .charts-area {
+        height: 100%;
+        overflow-y: auto; /* Only charts area scrolls */
+        overflow-x: hidden;
+        padding: 15px;
+        background: #fff;
+    }
+    
+    .chart-container {
+        background: #fff;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .noUi-connect {
+        background: #007bff;
+    }
+    
+    .noUi-handle {
+        border: 1px solid #007bff;
+        background: #fff;
+    }
+    
+    .analysis-info-card {
+        background: #fff;
+        margin-bottom: 15px;
+    }
+    
+    .chart-control-item {
+        background: #f8f9fa;
+        border-radius: 6px;
+        padding: 10px;
+        margin-bottom: 10px;
+        border: 1px solid #e9ecef;
+    }
+    
+    /* Remove horizontal scrollbars */
+    .row {
+        margin-left: 0;
+        margin-right: 0;
+    }
+    
+    .col-md-3, .col-md-9 {
+        padding-left: 0;
+        padding-right: 0;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 992px) {
+        .analysis-content {
+            height: auto;
+            overflow: visible;
+        }
+        
+        .left-sidebar {
+            height: auto;
+            border-right: none;
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 15px;
+        }
+        
+        .charts-area {
+            height: auto;
+            overflow: visible;
+        }
+        
+        .chart-controls-card,
+        .chart-controls-body {
+            max-height: none;
+            overflow: visible;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Time Control Bar (Sticky) -->
+<div class="time-control-bar">
+    <div class="card">
+        <div class="card-body py-2">
+            <div class="row align-items-center">
+                <div class="col-md-2">
+                    <h6 class="mb-0">
+                        <i class="fas fa-clock text-info"></i> Time Range
+                    </h6>
+                </div>
+                <div class="col-md-6">
+                    <div id="time-range-slider" style="margin: 10px 0;"></div>
+                </div>
+                <div class="col-md-3">
+                    <div class="small">
+                        <div><strong>Start:</strong> <span id="start-time-display">{{ analysis_data.time_labels[0][:16] if analysis_data.time_labels else 'N/A' }}</span></div>
+                        <div><strong>End:</strong> <span id="end-time-display">{{ analysis_data.time_labels[-1][:16] if analysis_data.time_labels else 'N/A' }}</span></div>
+                    </div>
+                </div>
+                <div class="col-md-1">
+                    <button id="reset-time-button" class="btn btn-primary btn-sm w-100">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Analysis Content -->
+<div class="analysis-content">
+    <div class="row h-100 g-0">
+        <!-- Left Sidebar -->
+        <div class="col-md-3 left-sidebar">
+            <!-- Analysis Info Card -->
+            <div class="card analysis-info-card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-area text-primary"></i> Analysis Info
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <small class="text-muted">File:</small>
+                        <div class="small fw-bold text-truncate" title="{{ metadata.original_filename }}">
+                            {{ metadata.original_filename }}
+                        </div>
+                    </div>
+                    <div class="row text-center mb-2">
+                        <div class="col-4">
+                            <div class="text-primary fw-bold">{{ analysis_data.metadata.rows }}</div>
+                            <small class="text-muted">Points</small>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-primary fw-bold">{{ analysis_data.metadata.columns }}</div>
+                            <small class="text-muted">Variables</small>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-success fw-bold">✓</div>
+                            <small class="text-muted">Status</small>
+                        </div>
+                    </div>
+                    <div class="btn-group w-100" role="group">
+                        <a href="{{ url_for('main.download_analysis', analysis_id=analysis_id) }}" 
+                           class="btn btn-success btn-sm">
+                            <i class="fas fa-download"></i> Download
+                        </a>
+                        <a href="{{ url_for('main.analysis_history') }}" 
+                           class="btn btn-secondary btn-sm">
+                            <i class="fas fa-arrow-left"></i> Back
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chart Controls Card -->
+            <div class="card chart-controls-card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-sliders-h text-success"></i> Chart Controls
+                    </h6>
+                </div>
+                <div class="card-body chart-controls-body">
+                    {% for chart_id, chart_info in analysis_data.charts_data.items() %}
+                    {% if chart_info.config.show_controls and chart_info.columns %}
+                    <div class="chart-control-item">
+                        <div class="mb-2">
+                            <strong class="small">
+                                <span class="text-primary">
+                                    {{ "■" if chart_info.config.type == "heatmap" else "━" }}
+                                </span> 
+                                {{ chart_info.config.title }}
+                            </strong>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-6">
+                                <label class="form-label small">Min:</label>
+                                <input type="number" 
+                                       id="min-{{ chart_id }}" 
+                                       value="{{ '%.2f'|format(chart_info.config.default_min or chart_info.stats.p5) }}" 
+                                       step="0.01"
+                                       class="form-control form-control-sm"
+                                       onchange="updateChartRange('{{ chart_id }}')">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small">Max:</label>
+                                <input type="number" 
+                                       id="max-{{ chart_id }}" 
+                                       value="{{ '%.2f'|format(chart_info.config.default_max or chart_info.stats.p95) }}" 
+                                       step="0.01"
+                                       class="form-control form-control-sm"
+                                       onchange="updateChartRange('{{ chart_id }}')">
+                            </div>
+                        </div>
+                        
+                        <button onclick="resetChartRange('{{ chart_id }}', {{ chart_info.stats.min }}, {{ chart_info.stats.max }})" 
+                                class="btn btn-primary btn-sm w-100 mt-2">
+                            <i class="fas fa-sync-alt"></i> Auto Range
+                        </button>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                    
+                    <!-- Debug Info -->
+                    <div class="mt-3">
+                        <div class="card bg-light">
+                            <div class="card-body p-2 text-center">
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle"></i>
+                                    <span id="debug-info">Loading...</span>
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Charts Area -->
+        <div class="col-md-9 charts-area">
+            {% for chart_id, chart_info in analysis_data.charts_data.items() %}
+            {% if chart_info.columns %}
+            <div class="chart-container">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            {{ chart_info.config.title }}
+                            <small class="text-muted">({{ chart_info.columns|length }} variables)</small>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="{{ chart_id }}" style="width: 100%; height: 450px;">
+                            <div class="d-flex align-items-center justify-content-center h-100">
+                                <div class="text-center">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading chart...</span>
+                                    </div>
+                                    <div class="mt-2 small text-muted">Loading {{ chart_info.config.title }}...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+            
+            {% if not analysis_data.charts_data %}
+            <div class="text-center py-5">
+                <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">No Charts Available</h5>
+                <p class="text-muted">No data could be visualized from this file.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Chart Data for JavaScript -->
+<script id="chart-data" type="application/json">
+{{ analysis_data.charts_data | tojson | safe }}
+</script>
+
+<script id="time-labels" type="application/json">
+{{ analysis_data.time_labels[:1000] | tojson | safe }}
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.0/echarts.min.js"></script>
+<script src="{{ url_for('static', filename='js/analysis.js') }}"></script>
+{% endblock %}

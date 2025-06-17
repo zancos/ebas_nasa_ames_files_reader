@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis History - Particle Analysis Tool{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Analysis History</h1>
+        <div>
+            <a href="{{ url_for('main.index') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> New Analysis
+            </a>
+            <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#cleanupModal">
+                <i class="fas fa-broom"></i> Cleanup
+            </button>
+        </div>
+    </div>
+
+    {% if analyses %}
+    <div class="row">
+        {% for analysis in analyses %}
+        <div class="col-xl-4 col-lg-6 col-md-12 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 text-truncate" title="{{ analysis.original_filename }}">
+                        <i class="fas fa-file-alt"></i> {{ analysis.original_filename[:30] }}{% if analysis.original_filename|length > 30 %}...{% endif %}
+                    </h6>
+                    <span class="badge bg-success">{{ analysis.status }}</span>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <small class="text-muted">Data Points</small>
+                            <div class="fw-bold">{{ analysis.data_points }}</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Variables</small>
+                            <div class="fw-bold">{{ analysis.variables }}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <small class="text-muted">Time Period</small>
+                        <div class="small">{{ analysis.time_period }}</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <small class="text-muted">Created</small>
+                        <div class="small">{{ analysis.creation_date[:19].replace('T', ' ') }}</div>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <small class="text-muted">Analysis ID</small>
+                        <div class="small font-monospace">{{ analysis.analysis_id[:8] }}...</div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('main.view_analysis', analysis_id=analysis.analysis_id) }}" 
+                           class="btn btn-primary btn-sm">
+                            <i class="fas fa-eye"></i> View Analysis
+                        </a>
+                        <div class="btn-group" role="group">
+                            <a href="{{ url_for('main.download_analysis', analysis_id=analysis.analysis_id) }}" 
+                               class="btn btn-outline-success btn-sm">
+                                <i class="fas fa-download"></i> Download
+                            </a>
+                            <button type="button" class="btn btn-outline-danger btn-sm"
+                                    onclick="confirmDelete('{{ analysis.analysis_id }}', '{{ analysis.original_filename }}')">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="mt-4 text-center text-muted">
+        <small>Showing {{ analyses|length }} analyses</small>
+    </div>
+
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
+        <h4 class="text-muted">No Analyses Found</h4>
+        <p class="text-muted">You haven't created any analyses yet.</p>
+        <a href="{{ url_for('main.index') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Create Your First Analysis
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteModalLabel">Confirm Deletion</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete the analysis for:</p>
+                    <p><strong id="deleteFileName"></strong></p>
+                    <p class="text-warning">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        This action cannot be undone.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <form id="deleteForm" method="POST" style="display: inline;">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Delete Analysis
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cleanup Modal -->
+    <div class="modal fade" id="cleanupModal" tabindex="-1" aria-labelledby="cleanupModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cleanupModalLabel">Cleanup Old Analyses</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form action="{{ url_for('main.cleanup_old_analyses') }}" method="POST">
+                    <div class="modal-body">
+                        <p>Remove analyses older than:</p>
+                        <div class="mb-3">
+                            <select name="days" class="form-select">
+                                <option value="1">1 day</option>
+                                <option value="3">3 days</option>
+                                <option value="7" selected>7 days</option>
+                                <option value="14">14 days</option>
+                                <option value="30">30 days</option>
+                            </select>
+                        </div>
+                        <p class="text-warning">
+                            <i class="fas fa-exclamation-triangle"></i> 
+                            This will permanently delete old analysis files.
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-warning">
+                            <i class="fas fa-broom"></i> Cleanup
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function confirmDelete(analysisId, filename) {
+        document.getElementById('deleteFileName').textContent = filename;
+        document.getElementById('deleteForm').action = "{{ url_for('main.delete_analysis', analysis_id='PLACEHOLDER') }}".replace('PLACEHOLDER', analysisId);
+        
+        var deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+        deleteModal.show();
+    }
+    </script>
+</div>
+{% endblock %}

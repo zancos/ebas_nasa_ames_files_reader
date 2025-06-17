@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Upload EBAS Data File</h2>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Upload your EBAS particle data file (.nas, .txt, or .csv) to generate interactive visualizations 
+                        with heatmaps and line charts for comprehensive data analysis.
+                    </p>
+                    
+                    <form method="POST" action="{{ url_for('main.upload_file') }}" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="file" class="form-label">Select Data File</label>
+                            <input type="file" class="form-control" id="file" name="file" 
+                                   accept=".nas,.txt,.csv" required>
+                            <div class="form-text">
+                                Supported formats: .nas (EBAS), .txt, .csv
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-upload"></i> Upload and Analyze
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Features</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6><i class="fas fa-th"></i> Interactive Heatmaps</h6>
+                            <p class="small text-muted">
+                                Visualize particle distributions, percentiles, and quality flags with Grafana-style color scales.
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6><i class="fas fa-chart-line"></i> Time Series Charts</h6>
+                            <p class="small text-muted">
+                                Analyze meteorological variables and relative humidity with interactive line charts.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-6">
+                            <h6><i class="fas fa-sliders-h"></i> Dynamic Controls</h6>
+                            <p class="small text-muted">
+                                Adjust time ranges and scale parameters with intuitive slider controls.
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6><i class="fas fa-download"></i> Export Options</h6>
+                            <p class="small text-muted">
+                                Download analysis results as HTML files for sharing and archiving.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
