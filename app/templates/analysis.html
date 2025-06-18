@@ -3,7 +3,7 @@
 {% block title %}Analysis Results - {{ metadata.original_filename }}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/ion-rangeslider/2.3.1/css/ion.rangeSlider.min.css">
 <style>
     .analysis-layout {
         height: calc(100vh - 56px);
@@ -20,7 +20,7 @@
     }
     
     .analysis-content {
-        height: calc(100vh - 136px);
+        height: calc(100vh - 120px);
         overflow: hidden;
     }
     
@@ -36,11 +36,11 @@
     }
     
     .chart-controls-card {
-        max-height: calc(100vh - 240px); /* Adjusted for smaller analysis info */
+        max-height: calc(100vh - 250px);
     }
     
     .chart-controls-body {
-        max-height: calc(100vh - 280px); /* Adjusted for smaller analysis info */
+        max-height: calc(100vh - 290px);
         overflow-y: auto;
         overflow-x: hidden;
         padding: 8px;
@@ -61,15 +61,6 @@
         border: 1px solid #dee2e6;
         margin-bottom: 20px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .noUi-connect {
-        background: #007bff;
-    }
-    
-    .noUi-handle {
-        border: 1px solid #007bff;
-        background: #fff;
     }
     
     .analysis-info-card {
@@ -106,7 +97,7 @@
         padding: 6px 8px;
     }
     
-    /* Animated filename */
+    /* Animated filename - SLOWER SPEED */
     .filename-container {
         overflow: hidden;
         position: relative;
@@ -122,7 +113,7 @@
     }
     
     .filename-text.animate {
-        animation: scroll-text 8s linear infinite;
+        animation: scroll-text 15s linear infinite;
     }
     
     .filename-text.paused {
@@ -131,9 +122,91 @@
     
     @keyframes scroll-text {
         0% { transform: translateX(0); }
-        20% { transform: translateX(0); }
-        80% { transform: translateX(calc(-100% + 220px)); }
+        25% { transform: translateX(0); }
+        75% { transform: translateX(calc(-100% + 220px)); }
         100% { transform: translateX(calc(-100% + 220px)); }
+    }
+    
+    /* SIMPLIFIED Ion Range Slider Styling */
+    .irs {
+        height: 35px;
+        margin: 8px 0;
+    }
+    
+    .irs--flat .irs-handle {
+        background-color: #007bff;
+        border: 2px solid #007bff;
+        width: 20px;
+        height: 20px;
+        top: 23px;
+    }
+    
+    .irs--flat .irs-handle:hover {
+        background-color: #0056b3;
+    }
+    
+    .irs--flat .irs-line {
+        background-color: #dee2e6;
+        height: 5px;
+        top: 31px;
+    }
+    
+    .irs--flat .irs-bar {
+        background-color: #007bff;
+        height: 5px;
+        top: 31px;
+    }
+    
+    /* FIXED: Tooltip positioning for both handles */
+    .irs--flat .irs-from,
+    .irs--flat .irs-to,
+    .irs--flat .irs-single {
+        background-color: #007bff;
+        color: white;
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        white-space: nowrap;
+        position: absolute;
+        transform: translateX(-50%);
+    }
+    
+    /* Ensure both tooltips move with their handles */
+    .irs--flat .irs-from {
+        top: 5px;
+    }
+    
+    .irs--flat .irs-to {
+        top: 5px;
+    }
+    
+    /* Simplified timeline layout */
+    .timeline-simplified-layout {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    
+    .timeline-slider-container {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .timeline-buttons {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+    
+    .timeline-info {
+        text-align: center;
+        background: #f8f9fa;
+        padding: 6px 8px;
+        border-radius: 4px;
+        border: 1px solid #e9ecef;
+        font-size: 0.75rem;
+        flex-shrink: 0;
+        min-width: 100px;
     }
     
     /* Responsive adjustments */
@@ -169,33 +242,53 @@
         .filename-text.animate {
             animation: none;
         }
+        
+        .timeline-simplified-layout {
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .timeline-slider-container {
+            width: 100%;
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Time Control Bar (Sticky) -->
+<!-- Simplified Time Control Bar -->
 <div class="time-control-bar">
     <div class="card card-compact">
-        <div class="card-body py-1">
-            <div class="row align-items-center">
-                <div class="col-md-2">
-                    <h6 class="mb-0 small">
-                        <i class="fas fa-clock text-info"></i> Time Range
-                    </h6>
+        <div class="card-header py-1">
+            <h6 class="mb-0" style="font-size: 0.85rem;">
+                <i class="fas fa-clock text-info"></i> Timeline Control
+                <small class="text-muted ms-2">Drag handles or entire range to navigate</small>
+            </h6>
+        </div>
+        <div class="card-body py-2">
+            <!-- Simplified Single-Row Layout -->
+            <div class="timeline-simplified-layout">
+                <!-- Range Info -->
+                <div class="timeline-info" id="range-info-display">
+                    <div style="font-weight: 600; color: #495057;">Range</div>
+                    <div id="range-summary" style="color: #6c757d;">0 - 99 (100 points)</div>
                 </div>
-                <div class="col-md-6">
-                    <div id="time-range-slider" style="margin: 8px 0;"></div>
+                
+                <!-- Range Slider -->
+                <div class="timeline-slider-container">
+                    <input type="text" id="time-range-slider" name="time_range" value="" />
                 </div>
-                <div class="col-md-3">
-                    <div style="font-size: 0.75rem;">
-                        <div><strong>Start:</strong> <span id="start-time-display">{{ analysis_data.time_labels[0][:16] if analysis_data.time_labels else 'N/A' }}</span></div>
-                        <div><strong>End:</strong> <span id="end-time-display">{{ analysis_data.time_labels[-1][:16] if analysis_data.time_labels else 'N/A' }}</span></div>
-                    </div>
-                </div>
-                <div class="col-md-1">
-                    <button id="reset-time-button" class="btn btn-primary btn-xs w-100">
-                        <i class="fas fa-sync-alt"></i>
+                
+                <!-- Control Buttons -->
+                <div class="timeline-buttons">
+                    <button id="reset-time-button" class="btn btn-primary btn-sm">
+                        <i class="fas fa-sync-alt"></i> Reset
+                    </button>
+                    <button id="zoom-in-button" class="btn btn-outline-info btn-sm">
+                        <i class="fas fa-search-plus"></i> Zoom In
+                    </button>
+                    <button id="zoom-out-button" class="btn btn-outline-warning btn-sm">
+                        <i class="fas fa-search-minus"></i> Zoom Out
                     </button>
                 </div>
             </div>
@@ -203,7 +296,7 @@
     </div>
 </div>
 
-<!-- Main Analysis Content -->
+<!-- Main Analysis Content (rest remains the same) -->
 <div class="analysis-content">
     <!-- Left Sidebar (Fixed) -->
     <div class="left-sidebar position-fixed">
@@ -312,6 +405,13 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Diagnostic Button -->
+                <div class="mt-2">
+                    <button id="run-diagnostics" class="btn btn-warning btn-xs w-100">
+                        <i class="fas fa-bug"></i> Run Diagnostics
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -329,7 +429,7 @@
                     </h6>
                 </div>
                 <div class="card-body p-0">
-                    <div id="{{ chart_id }}" style="width: 100%; height: 450px;">
+                    <div id="{{ chart_id }}" style="width: 100%; height: 500px; min-height: 500px; display: block;">
                         <div class="d-flex align-items-center justify-content-center h-100">
                             <div class="text-center">
                                 <div class="spinner-border text-primary" role="status">
@@ -385,12 +485,25 @@ document.addEventListener('DOMContentLoaded', function() {
             filenameElement.classList.add('animate');
         }
     }
+    
+    // Setup diagnostic button
+    const diagnosticsBtn = document.getElementById('run-diagnostics');
+    if (diagnosticsBtn) {
+        diagnosticsBtn.addEventListener('click', function() {
+            if (typeof runDiagnostics === 'function') {
+                runDiagnostics();
+            } else {
+                alert('Diagnostics function not available. Check if analysis.js is loaded correctly.');
+            }
+        });
+    }
 });
 </script>
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ion-rangeslider/2.3.1/js/ion.rangeSlider.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.0/echarts.min.js"></script>
 <script src="{{ url_for('static', filename='js/analysis.js') }}"></script>
 {% endblock %}

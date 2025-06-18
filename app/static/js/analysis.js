@@ -5,13 +5,16 @@ let chartsData = {};
 let originalChartsData = {};
 let totalPoints = 0;
 let currentTimeRange = [0, -1];
+let lastTimeRange = [0, -1]; // ADDED: Track last range to avoid unnecessary updates
+let rangeSlider = null;
+let isUpdating = false; // ADDED: Prevent concurrent updates
 
 // Simple but effective grid for large, aligned charts
 const ALIGNED_GRID = {
-    left: 120,      // Fixed left margin for Y-axis labels
-    right: 50,      // Fixed right margin
-    top: 80,        // Fixed top margin for title/legend
-    bottom: 80,     // Fixed bottom margin for X-axis/controls
+    left: 120,
+    right: 50,
+    top: 80,
+    bottom: 80,
     containLabel: false
 };
 
@@ -24,13 +27,82 @@ function debugLog(message) {
     }
 }
 
+// Format time label for display
+function formatTimeLabel(index) {
+    if (index >= 0 && index < timeLabels.length) {
+        return timeLabels[index];
+    }
+    return `Index ${index}`;
+}
+
+// Calculate time duration between two indices
+function calculateDuration(startIdx, endIdx) {
+    const pointCount = endIdx - startIdx + 1;
+    if (pointCount === totalPoints) {
+        return "Full dataset";
+    }
+    return `${pointCount} points`;
+}
+
+// PERFORMANCE: Check if range actually changed
+function hasRangeChanged(newStartIdx, newEndIdx) {
+    return lastTimeRange[0] !== newStartIdx || lastTimeRange[1] !== newEndIdx;
+}
+
+// Error display system
+function displayError(message) {
+    const errorBanner = document.createElement('div');
+    errorBanner.className = 'alert alert-danger alert-dismissible fade show';
+    errorBanner.style.position = 'fixed';
+    errorBanner.style.top = '60px';
+    errorBanner.style.left = '20px';
+    errorBanner.style.right = '20px';
+    errorBanner.style.zIndex = '2000';
+    
+    errorBanner.innerHTML = `
+        <strong>Error:</strong> ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    document.body.appendChild(errorBanner);
+    
+    setTimeout(() => {
+        errorBanner.classList.remove('show');
+        setTimeout(() => errorBanner.remove(), 500);
+    }, 10000);
+}
+
+// Diagnostics function
+function runDiagnostics() {
+    const results = {
+        jquery: typeof $ !== 'undefined' ? 'Available ✓' : 'MISSING ✗',
+        ionRangeSlider: (typeof $ !== 'undefined' && typeof $.fn.ionRangeSlider !== 'undefined') ? 'Available ✓' : 'MISSING ✗',
+        echarts: typeof echarts !== 'undefined' ? 'Available ✓' : 'MISSING ✗',
+        timeLabels: timeLabels.length + ' labels loaded',
+        chartsData: Object.keys(chartsData).length + ' chart configurations',
+        chartsInitialized: Object.keys(charts).length + ' charts created',
+        currentTimeRange: `${currentTimeRange[0]} to ${currentTimeRange[1]}`,
+        lastTimeRange: `${lastTimeRange[0]} to ${lastTimeRange[1]}`,
+        rangeSlider: rangeSlider ? 'Initialized ✓' : 'Not initialized ✗',
+        performanceOptimization: 'Range change detection ✓',
+        browserInfo: navigator.userAgent.substring(0, 50) + '...'
+    };
+    
+    const message = 'Diagnostics Results:\n\n' + 
+                   Object.entries(results)
+                         .map(([key, value]) => `${key}: ${value}`)
+                         .join('\n') +
+                   '\n\nCheck the browser console for more details.';
+    
+    alert(message);
+    console.log('Full Diagnostics Results:', results);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     debugLog('Starting initialization...');
     
-    // Initialize filename animation
     initializeFilenameAnimation();
     
-    // Wait a bit for everything to load
     setTimeout(function() {
         initializeAnalysisPage();
     }, 100);
@@ -72,25 +144,319 @@ function initializeAnalysisPage() {
         timeLabels = JSON.parse(timeLabelsElement.textContent);
         totalPoints = timeLabels.length;
         currentTimeRange = [0, totalPoints - 1];
+        lastTimeRange = [0, totalPoints - 1]; // Initialize last range
         
         debugLog(`Loaded ${Object.keys(chartsData).length} charts, ${totalPoints} time points`);
         
-        if (typeof echarts === 'undefined') {
-            throw new Error('ECharts library not loaded');
+        if (typeof $ === 'undefined') {
+            throw new Error('jQuery library not loaded. Required for timeline slider.');
         }
         
-        initializeCharts();
-        initializeSlider();
+        if (typeof $.fn.ionRangeSlider === 'undefined') {
+            throw new Error('Ion.RangeSlider library not loaded. Please ensure it\'s included.');
+        }
+        
+        if (typeof echarts === 'undefined') {
+            throw new Error('ECharts library not loaded. Required for data visualization.');
+        }
+        
+        try {
+            initializeCharts();
+            debugLog('Charts initialized');
+        } catch (chartError) {
+            console.error('Error initializing charts:', chartError);
+            debugLog('Chart initialization failed; continuing with other components');
+            displayError('Chart initialization failed: ' + chartError.message);
+        }
+        
+        try {
+            initializeAdvancedSlider();
+            debugLog('Slider initialized');
+        } catch (sliderError) {
+            console.error('Error initializing slider:', sliderError);
+            debugLog('Slider initialization failed; fallback to static view');
+            displayError('Timeline slider failed to load: ' + sliderError.message);
+        }
+        
         setupButtons();
-        setupGlobalResize(); // Add global resize handler
+        setupGlobalResize();
         
         debugLog('Initialization complete!');
         
     } catch (error) {
         console.error('Error initializing analysis:', error);
         debugLog(`Error: ${error.message}`);
+        displayError('Initialization failed: ' + error.message);
     }
 }
+
+function initializeAdvancedSlider() {
+    try {
+        debugLog('Setting up timeline slider...');
+        
+        const sliderElement = document.getElementById('time-range-slider');
+        if (!sliderElement) {
+            throw new Error('Slider element not found in DOM');
+        }
+        
+        if (typeof $ !== 'function') {
+            throw new Error('jQuery not available');
+        }
+        
+        // IMPROVED: Initialize with better tooltip positioning
+        $("#time-range-slider").ionRangeSlider({
+            type: "double",
+            min: 0,
+            max: totalPoints - 1,
+            from: 0,
+            to: Math.min(totalPoints - 1, 99),
+            step: 1,
+            drag_interval: true,
+            grid: true,
+            grid_num: 8, // Reduced from 10 for compactness
+            hide_min_max: true, // Hide min/max to save space
+            prettify: function(num) {
+                const idx = parseInt(num);
+                if (idx >= 0 && idx < timeLabels.length) {
+                    const timeStr = timeLabels[idx];
+                    // Shorter format for tooltips
+                    return `${idx}: ${timeStr.substring(5, 16)}`; // Show only date part
+                }
+                return `${idx}`;
+            },
+            onStart: function(data) {
+                // Always update display immediately
+                updateTimeDisplay(data.from, data.to);
+                // PERFORMANCE: Only update charts if range actually changed
+                if (hasRangeChanged(data.from, data.to)) {
+                    updateAllChartsWithTimeRange(data.from, data.to);
+                }
+            },
+            onChange: function(data) {
+                // Always update display for immediate feedback
+                updateTimeDisplay(data.from, data.to);
+                // But don't update charts during dragging for better performance
+            },
+            onFinish: function(data) {
+                // Update display
+                updateTimeDisplay(data.from, data.to);
+                // PERFORMANCE: Only update charts if range actually changed
+                if (hasRangeChanged(data.from, data.to)) {
+                    updateAllChartsWithTimeRange(data.from, data.to);
+                } else {
+                    debugLog('Range unchanged, skipping chart update');
+                }
+            }
+        });
+        
+        rangeSlider = $("#time-range-slider").data("ionRangeSlider");
+        
+        debugLog('Slider setup complete');
+    } catch (error) {
+        console.error('Failed to initialize timeline slider:', error);
+        debugLog('Timeline slider initialization failed. Check console for details.');
+        createFallbackSlider();
+    }
+}
+
+function createFallbackSlider() {
+    const container = document.getElementById('time-range-slider');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="alert alert-warning mb-2">
+            <small>Interactive timeline not available. Using basic range controls:</small>
+        </div>
+        <div class="d-flex justify-content-between mb-2">
+            <input type="number" id="fallback-start" value="0" min="0" max="${totalPoints-1}" 
+                   class="form-control form-control-sm" style="width: 100px;" placeholder="Start">
+            <span class="mx-2 align-self-center">to</span>
+            <input type="number" id="fallback-end" value="${Math.min(totalPoints-1, 99)}" min="0" max="${totalPoints-1}" 
+                   class="form-control form-control-sm" style="width: 100px;" placeholder="End">
+            <button id="fallback-apply" class="btn btn-primary btn-sm ms-2">Apply</button>
+        </div>
+    `;
+    
+    document.getElementById('fallback-apply').addEventListener('click', function() {
+        const start = parseInt(document.getElementById('fallback-start').value) || 0;
+        const end = parseInt(document.getElementById('fallback-end').value) || totalPoints-1;
+        updateTimeDisplay(start, end);
+        
+        // PERFORMANCE: Check if range changed before updating
+        if (hasRangeChanged(start, end)) {
+            updateAllChartsWithTimeRange(start, end);
+        }
+    });
+    
+    debugLog('Fallback slider created');
+}
+
+// PERFORMANCE OPTIMIZED: Update display function
+function updateTimeDisplay(startIdx, endIdx) {
+    const startDisplay = document.getElementById('start-time-display');
+    const endDisplay = document.getElementById('end-time-display');
+    const startIndexDisplay = document.getElementById('start-index-display');
+    const endIndexDisplay = document.getElementById('end-index-display');
+    const rangeSizeDisplay = document.getElementById('range-size-display');
+    const rangeDurationDisplay = document.getElementById('range-duration-display');
+    
+    if (startDisplay) {
+        const startTime = formatTimeLabel(startIdx);
+        startDisplay.textContent = startTime.substring(0, 12); // Shorter display
+    }
+    
+    if (endDisplay) {
+        const endTime = formatTimeLabel(endIdx);
+        endDisplay.textContent = endTime.substring(0, 12); // Shorter display
+    }
+    
+    if (startIndexDisplay) {
+        startIndexDisplay.textContent = `Index: ${startIdx}`;
+    }
+    
+    if (endIndexDisplay) {
+        endIndexDisplay.textContent = `Index: ${endIdx}`;
+    }
+    
+    if (rangeSizeDisplay) {
+        const pointCount = endIdx - startIdx + 1;
+        rangeSizeDisplay.textContent = `${pointCount} points`;
+    }
+    
+    if (rangeDurationDisplay) {
+        rangeDurationDisplay.textContent = calculateDuration(startIdx, endIdx);
+    }
+}
+
+// PERFORMANCE OPTIMIZED: Only update charts when range actually changes
+function updateAllChartsWithTimeRange(startIdx, endIdx) {
+    // Prevent concurrent updates
+    if (isUpdating) {
+        debugLog('Update already in progress, skipping');
+        return;
+    }
+    
+    // Check if range actually changed
+    if (!hasRangeChanged(startIdx, endIdx)) {
+        debugLog('Range unchanged, skipping update');
+        return;
+    }
+    
+    isUpdating = true;
+    currentTimeRange = [startIdx, endIdx];
+    lastTimeRange = [startIdx, endIdx]; // Update last range
+    
+    try {
+        let updatedCharts = 0;
+        
+        for (const [chartId, chartInfo] of Object.entries(chartsData)) {
+            const chart = charts[chartId];
+            if (chart && chartInfo) {
+                if (chartInfo.config.type === 'heatmap') {
+                    createHeatmapChart(chart, chartId, chartInfo);
+                    updatedCharts++;
+                } else if (chartInfo.config.type === 'line') {
+                    createLineChart(chart, chartId, chartInfo);
+                    updatedCharts++;
+                }
+            }
+        }
+        
+        debugLog(`Updated ${updatedCharts} charts for time range: ${startIdx} to ${endIdx}`);
+        
+    } catch (error) {
+        console.error('Error updating charts:', error);
+        debugLog('Chart update failed');
+    } finally {
+        isUpdating = false;
+    }
+}
+
+function setupButtons() {
+    // Reset button
+    const resetButton = document.getElementById('reset-time-button');
+    if (resetButton) {
+        resetButton.addEventListener('click', function() {
+            if (rangeSlider) {
+                rangeSlider.update({
+                    from: 0,
+                    to: totalPoints - 1
+                });
+            } else {
+                const startInput = document.getElementById('fallback-start');
+                const endInput = document.getElementById('fallback-end');
+                if (startInput) startInput.value = 0;
+                if (endInput) endInput.value = totalPoints - 1;
+                updateTimeDisplay(0, totalPoints - 1);
+                
+                if (hasRangeChanged(0, totalPoints - 1)) {
+                    updateAllChartsWithTimeRange(0, totalPoints - 1);
+                }
+            }
+        });
+    }
+    
+    // Move left button
+    const moveLeftButton = document.getElementById('move-left-button');
+    if (moveLeftButton) {
+        moveLeftButton.addEventListener('click', function() {
+            if (rangeSlider) {
+                const currentRange = rangeSlider.result.to - rangeSlider.result.from;
+                const step = Math.max(1, Math.floor(currentRange * 0.1));
+                const newFrom = Math.max(0, rangeSlider.result.from - step);
+                const newTo = Math.max(currentRange, newFrom + currentRange);
+                
+                rangeSlider.update({
+                    from: newFrom,
+                    to: newTo
+                });
+            }
+        });
+    }
+    
+    // Move right button
+    const moveRightButton = document.getElementById('move-right-button');
+    if (moveRightButton) {
+        moveRightButton.addEventListener('click', function() {
+            if (rangeSlider) {
+                const currentRange = rangeSlider.result.to - rangeSlider.result.from;
+                const step = Math.max(1, Math.floor(currentRange * 0.1));
+                const newTo = Math.min(totalPoints - 1, rangeSlider.result.to + step);
+                const newFrom = Math.min(newTo - currentRange, newTo - currentRange);
+                
+                rangeSlider.update({
+                    from: newFrom,
+                    to: newTo
+                });
+            }
+        });
+    }
+    
+    // Zoom in button
+    const zoomInButton = document.getElementById('zoom-in-button');
+    if (zoomInButton) {
+        zoomInButton.addEventListener('click', function() {
+            if (rangeSlider) {
+                const center = Math.floor((rangeSlider.result.from + rangeSlider.result.to) / 2);
+                const currentRange = rangeSlider.result.to - rangeSlider.result.from;
+                const newRange = Math.max(1, Math.floor(currentRange * 0.7));
+                const newFrom = Math.max(0, center - Math.floor(newRange / 2));
+                const newTo = Math.min(totalPoints - 1, newFrom + newRange);
+                
+                rangeSlider.update({
+                    from: newFrom,
+                    to: newTo
+                });
+            }
+        });
+    }
+    
+    debugLog('Timeline buttons configured');
+}
+
+// Rest of the functions remain the same as in the previous version...
+// (initializeCharts, setupGlobalResize, debounce, filterDataByTimeRange, 
+//  createHeatmapChart, createLineChart, updateChartRange, resetChartRange, etc.)
 
 function initializeCharts() {
     debugLog('Initializing charts...');
@@ -107,10 +473,8 @@ function initializeCharts() {
             
             debugLog(`Creating chart: ${chartId}`);
             
-            // Clear loading content
             element.innerHTML = '';
             
-            // Ensure element has proper dimensions
             element.style.width = '100%';
             element.style.height = '500px';
             element.style.minHeight = '500px';
@@ -140,31 +504,26 @@ function initializeCharts() {
     debugLog(`Initialized ${chartsInitialized} charts`);
 }
 
-// Global resize handler for all charts
 function setupGlobalResize() {
     const resizeHandler = debounce(() => {
         debugLog('Handling window resize...');
         
-        // Force redraw all charts with new dimensions
         for (const [chartId, chartInfo] of Object.entries(chartsData)) {
             const chart = charts[chartId];
             const element = document.getElementById(chartId);
             
             if (chart && element && chartInfo) {
                 try {
-                    // Ensure container maintains proper dimensions
                     element.style.width = '100%';
                     element.style.height = '500px';
                     element.style.minHeight = '500px';
                     element.style.display = 'block';
                     
-                    // Force chart to recognize new container size
                     chart.resize({
                         width: element.offsetWidth,
                         height: 500
                     });
                     
-                    // Recreate chart with new dimensions
                     if (chartInfo.config.type === 'heatmap') {
                         createHeatmapChart(chart, chartId, chartInfo);
                     } else if (chartInfo.config.type === 'line') {
@@ -181,8 +540,6 @@ function setupGlobalResize() {
     }, 200);
     
     window.addEventListener('resize', resizeHandler);
-    
-    // Also handle orientation change on mobile devices
     window.addEventListener('orientationchange', () => {
         setTimeout(resizeHandler, 500);
     });
@@ -415,103 +772,6 @@ function createLineChart(chart, chartId, chartInfo) {
     chart.setOption(option, true);
 }
 
-function updateAllChartsWithTimeRange(startIdx, endIdx) {
-    currentTimeRange = [startIdx, endIdx];
-    
-    for (const [chartId, chartInfo] of Object.entries(chartsData)) {
-        const chart = charts[chartId];
-        if (chart && chartInfo) {
-            if (chartInfo.config.type === 'heatmap') {
-                createHeatmapChart(chart, chartId, chartInfo);
-            } else if (chartInfo.config.type === 'line') {
-                createLineChart(chart, chartId, chartInfo);
-            }
-        }
-    }
-    
-    debugLog(`Updated all charts for time range: ${startIdx} to ${endIdx}`);
-}
-
-function initializeSlider() {
-    const slider = document.getElementById('time-range-slider');
-    if (!slider || totalPoints === 0) {
-        debugLog('Slider element not found or no data points');
-        return;
-    }
-    
-    try {
-        if (slider.noUiSlider) {
-            slider.noUiSlider.destroy();
-        }
-        
-        debugLog(`Creating slider for ${totalPoints} points`);
-        
-        noUiSlider.create(slider, {
-            start: [0, Math.min(totalPoints - 1, 99)],
-            connect: true,
-            range: { 'min': 0, 'max': totalPoints - 1 },
-            step: 1,
-            tooltips: [
-                {
-                    to: function(value) {
-                        const idx = Math.round(value);
-                        return idx < timeLabels.length ? timeLabels[idx].substring(0, 10) : `${idx}`;
-                    }
-                },
-                {
-                    to: function(value) {
-                        const idx = Math.round(value);
-                        return idx < timeLabels.length ? timeLabels[idx].substring(0, 10) : `${idx}`;
-                    }
-                }
-            ]
-        });
-        
-        slider.noUiSlider.on('update', function(values) {
-            const startIdx = Math.round(values[0]);
-            const endIdx = Math.round(values[1]);
-            updateTimeDisplay(startIdx, endIdx);
-            updateAllChartsWithTimeRange(startIdx, endIdx);
-        });
-        
-        updateAllChartsWithTimeRange(0, Math.min(totalPoints - 1, 99));
-        
-        debugLog('Slider initialized successfully');
-        
-    } catch (error) {
-        console.error('Slider initialization error:', error);
-        debugLog('Slider initialization failed');
-    }
-}
-
-function setupButtons() {
-    const resetButton = document.getElementById('reset-time-button');
-    if (resetButton) {
-        resetButton.addEventListener('click', function() {
-            const slider = document.getElementById('time-range-slider');
-            if (slider && slider.noUiSlider) {
-                slider.noUiSlider.set([0, totalPoints - 1]);
-            }
-        });
-        debugLog('Reset button configured');
-    }
-}
-
-function updateTimeDisplay(startIdx, endIdx) {
-    const startDisplay = document.getElementById('start-time-display');
-    const endDisplay = document.getElementById('end-time-display');
-    
-    if (startDisplay) {
-        startDisplay.textContent = (startIdx < timeLabels.length ? 
-            timeLabels[startIdx] : `Index ${startIdx}`).substring(0, 16);
-    }
-    
-    if (endDisplay) {
-        endDisplay.textContent = (endIdx < timeLabels.length ? 
-            timeLabels[endIdx] : `Index ${endIdx}`).substring(0, 16);
-    }
-}
-
 function updateChartRange(chartId) {
     const minInput = document.getElementById(`min-${chartId}`);
     const maxInput = document.getElementById(`max-${chartId}`);
@@ -561,8 +821,24 @@ function resumeAnimation(element) {
     element.classList.remove('paused');
 }
 
-// Global error handler
+// Enhanced error handler
 window.addEventListener('error', function(e) {
     console.error('Global error:', e.error);
     debugLog('An error occurred - check console');
+    displayError(`JavaScript error: ${e.error?.message || 'Unknown error'}`);
+});
+
+// Check if all dependencies loaded correctly when everything is ready
+window.addEventListener('load', function() {
+    setTimeout(() => {
+        if (typeof $ === 'undefined') {
+            displayError('jQuery failed to load. Timeline features will not work.');
+        }
+        if (typeof echarts === 'undefined') {
+            displayError('ECharts failed to load. Charts will not display.');
+        }
+        if (typeof $ !== 'undefined' && typeof $.fn.ionRangeSlider === 'undefined') {
+            displayError('Ion.RangeSlider failed to load. Advanced timeline features will not work.');
+        }
+    }, 1000);
 });
